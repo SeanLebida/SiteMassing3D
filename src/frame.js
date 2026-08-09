@@ -51,6 +51,20 @@ export function photoDrawRect(fitMode, imgW, imgH, frameW, frameH) {
 }
 
 /**
+ * Has the photo been moved inside the frame — panned, zoomed, or rotated?
+ *
+ * This is the one state where a transparent "cutout" export no longer registers
+ * against the original photo file: the plate was composed against the photo as
+ * transformed here, so dropping it onto the untouched original in Photoshop puts
+ * the home in the wrong place. Callers use this to warn at the moment it matters.
+ */
+export function photoIsTransformed(sp) {
+  if (!sp) return false;
+  const near = (v, target) => Math.abs((v ?? target) - target) < 1e-6;
+  return !(near(sp.scale, 1) && near(sp.panX, 0) && near(sp.panY, 0) && near(sp.rotation, 0));
+}
+
+/**
  * Export pixel size that matches a site photo's own pixels, so a transparent
  * export drops onto the untouched photo in Photoshop/Affinity without any
  * scaling. Only oversized photos are reduced, and then proportionally — a

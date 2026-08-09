@@ -384,6 +384,18 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; }
 
 .hint { color: var(--dim); font-size: 11px; margin: 8px 0 0; }
 
+.warn {
+  color: #ffd479;
+  font-size: 11px;
+  line-height: 1.4;
+  margin: 6px 0 0;
+  background: rgba(255, 212, 121, 0.10);
+  border: 1px solid rgba(255, 212, 121, 0.35);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+.warn b { color: #ffe9b8; }
+
 /* ---------- opening rows ---------- */
 
 .opening {

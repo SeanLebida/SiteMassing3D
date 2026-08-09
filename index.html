@@ -313,6 +313,7 @@
         </div>
         <label class="row check"><input id="x_lockFrame" type="checkbox" autocomplete="off"><span style="color:#6fb2ff;font-weight:600;">🔒 Lock preview frame to export aspect</span></label>
         <label class="row check"><input id="x_alpha" type="checkbox" autocomplete="off"><span>Transparent background (for compositing)</span></label>
+        <p id="alphaRegisterWarn" class="warn" style="display:none;">⚠️ This photo has been panned / zoomed / rotated, so the cutout is composed against the <b>moved</b> photo. Dropped onto the original file it will not register. Either <i>Reset all align</i> and place the home with House&nbsp;X/Z/Heading instead, or composite onto this app's flattened export.</p>
         <label class="row check"><input id="x_burn" type="checkbox" autocomplete="off"><span>Burn in model name + W×L caption</span></label>
         <p class="hint">With the frame locked, the letterboxed area on screen is exactly what the PNG contains. Unlock it and the photo re-fits and the camera's horizontal field widens at export time, so a careful alignment drifts.</p>
         <button id="btnFitPx" class="block">Fit pixel aspect to current view</button>

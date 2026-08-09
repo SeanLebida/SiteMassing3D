@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { defaultHome, defaultScene, defaultExport, migrate, WALLS } from '../src/defaults.js';
 import { derived, wallFrames, fmtAllUnits, buildHome, getWallHeight } from '../src/build.js';
-import { letterbox, photoDrawRect, matchExportToPhoto } from '../src/frame.js';
+import { letterbox, photoDrawRect, matchExportToPhoto, photoIsTransformed } from '../src/frame.js';
 
 test('1. Defaults & State Initialization', () => {
   const home = defaultHome();
@@ -401,4 +401,26 @@ test('20. Export defaults keep the frame locked and photo size recorded', () => 
   assert.equal(old.sitePhoto.natW, 0, 'New fields defaulted in');
   assert.equal(old.sitePhoto.fitMode, 'contain');
   assert.equal(defaultScene().horizon, false, 'Horizon guide defaults off');
+});
+
+test('21. Photo transform detection guards 1:1 compositing', () => {
+  const clean = defaultHome().sitePhoto;
+  assert.equal(photoIsTransformed(clean), false, 'A freshly loaded photo is untransformed');
+
+  // Each transform on its own must trip it — these are the states where a
+  // transparent export stops registering against the original photo file.
+  assert.equal(photoIsTransformed({ ...clean, panX: 4 }), true, 'pan X');
+  assert.equal(photoIsTransformed({ ...clean, panY: -2.5 }), true, 'pan Y');
+  assert.equal(photoIsTransformed({ ...clean, scale: 1.2 }), true, 'zoom in');
+  assert.equal(photoIsTransformed({ ...clean, scale: 0.8 }), true, 'zoom out');
+  assert.equal(photoIsTransformed({ ...clean, rotation: 3 }), true, 'rotation');
+
+  // Moving the *home* on the lot is the safe path and must not trip it.
+  assert.equal(photoIsTransformed({ ...clean, posX: 20, posZ: -14, rotY: 35 }), false,
+    'House X/Z/Heading leaves the photo untouched');
+  // Nor do opacity or baseline, which do not move the image either.
+  assert.equal(photoIsTransformed({ ...clean, opacity: 0.4, baselineY: 3 }), false);
+
+  assert.equal(photoIsTransformed(null), false);
+  assert.equal(photoIsTransformed({}), false, 'Missing fields read as defaults');
 });

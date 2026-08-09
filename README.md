@@ -58,11 +58,34 @@ viewport to the export's shape so the preview is the plate. Measured on a mild
 1.44 vs 1.50 mismatch, the drift is ~11–18 px on a 1200 px plate; the wider the
 mismatch, the worse it gets. Leave it on.
 
-One caveat: *Match export to this photo* buys you 1:1 compositing against the
-**untouched** photo. If you then pan/zoom/rotate the photo inside the app, the
-alpha plate matches the transformed photo, not the original file — so either
-align by moving the camera and the house, or composite onto the app's own
-flattened export.
+### Panning or zooming the photo breaks 1:1 compositing
+
+*Match export to this photo* buys you 1:1 registration against the **untouched**
+photo file. The moment you pan, zoom, or rotate the photo inside the app, that
+guarantee is gone: the plate is composed against the photo *as moved*, so a
+transparent cutout dropped onto the original file in Photoshop puts the home in
+the wrong place — shifted, scaled, or tilted by exactly the amount you moved the
+plate.
+
+It fails silently. Nothing about the exported PNG looks wrong on its own; you
+only find out when it is sitting on the client's photo in the wrong spot. So the
+app now warns you in the export panel whenever *Transparent background* is
+ticked and the photo has been moved.
+
+Three ways out, in order of preference:
+
+1. **Don't move the photo.** Frame with the *camera* (orbit, *Cam distance*,
+   *Focal*) and place the building with *House X / Z / Heading*. Both leave the
+   photo untouched, so 1:1 registration holds. This is the intended path.
+2. **Composite onto the flattened export** instead of the original file — untick
+   *Transparent background* and the app burns the moved photo into the PNG, so
+   plate and photo agree by construction.
+3. **Bake the move upstream.** Crop/rotate the photo in Photoshop first, save
+   it, and load *that* file. Then the app's untouched photo is the file you are
+   compositing onto.
+
+`Reset all align` returns the photo to untransformed without disturbing the
+home's lot position.
 
 ## The loop it is built for
 
@@ -174,6 +197,11 @@ Runs against the vendored `three` via a small resolver hook in
 - Massing-level materials: flat colors, no siding or shingle texture. That is
   deliberate — a textured render fights the lot photo's lighting, while a clean
   massing plate reads as a geometry reference.
+- **Panning / zooming / rotating the site photo voids 1:1 compositing.** A
+  transparent export then registers against the moved photo, not the original
+  file. Frame with the camera and *House X / Z / Heading* instead, or composite
+  onto the flattened export. See "Panning or zooming the photo breaks 1:1
+  compositing" above; the export panel warns when you are in this state.
 - Camera matching is by eye against the horizon guide. There is no solver that
   reads vanishing points off the photo, so a lens with heavy barrel distortion,
   or a photo that has been cropped off-centre, will not line up perfectly.

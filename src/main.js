@@ -7,7 +7,7 @@ import { renderOpeningList, syncOpeningValues, initAccordions } from './ui.js';
 import { updatePlanPlate, nearestWallHit } from './plan.js';
 import { Gizmo, wallPlaneHit, applyDrag } from './gizmo.js';
 import { shoot, contactSheet, renderToCanvas } from './capture.js';
-import { letterbox, matchExportToPhoto } from './frame.js';
+import { letterbox, matchExportToPhoto, photoIsTransformed } from './frame.js';
 import { defaultHome, defaultScene, defaultExport, nextId, OPENING_PRESETS, migrate } from './defaults.js';
 
 const STORE_KEY = 'sitemassing3d.v1';
@@ -67,6 +67,21 @@ function applyScene() {
   updateSitePhotoPlate();
 }
 
+/**
+ * A transparent export is meant to be dropped onto the original photo file as a
+ * layer. That only registers while the photo sits untransformed in the frame —
+ * pan, zoom or rotate it and the plate was composed against a photo that no
+ * longer matches the file on disk. Warn exactly when both conditions are true,
+ * because this fails silently and only shows up in the client's plate.
+ */
+function updateAlphaRegisterWarning() {
+  const el = $('alphaRegisterWarn');
+  if (!el) return;
+  const sp = state.home.sitePhoto;
+  const risky = !!(state.export.alpha && sp?.src && sp.show && photoIsTransformed(sp));
+  el.style.display = risky ? 'block' : 'none';
+}
+
 function updateSitePhotoPlate() {
   const bg = $('sitePhotoBg');
   if (!bg) return;
@@ -74,6 +89,7 @@ function updateSitePhotoPlate() {
   if (!sp || !sp.src || !sp.show || state.scene.blockLandscape) {
     bg.style.display = 'none';
     bg.style.backgroundImage = '';
+    updateAlphaRegisterWarning();
     if (state.scene) stage.scene.background = state.scene.bgVisible === false ? null : new THREE.Color(state.scene.bg);
     return;
   }
@@ -87,6 +103,7 @@ function updateSitePhotoPlate() {
   const rot = sp.rotation ?? 0;
   bg.style.transform = `translate(${panX}%, ${panY}%) scale(${scale}) rotate(${rot}deg)`;
   stage.scene.background = null;
+  updateAlphaRegisterWarning();
 }
 
 function select(id) {
@@ -531,7 +548,11 @@ function bind() {
       save();
     });
   }
-  $('x_alpha').addEventListener('change', (e) => { state.export.alpha = e.target.checked; save(); });
+  $('x_alpha').addEventListener('change', (e) => {
+    state.export.alpha = e.target.checked;
+    updateAlphaRegisterWarning();
+    save();
+  });
   $('x_burn').addEventListener('change', (e) => { state.export.burn = e.target.checked; save(); });
   if ($('x_lockFrame')) {
     $('x_lockFrame').addEventListener('change', (e) => {
