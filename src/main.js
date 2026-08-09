@@ -7,6 +7,7 @@ import { renderOpeningList, syncOpeningValues, initAccordions } from './ui.js';
 import { updatePlanPlate, nearestWallHit } from './plan.js';
 import { Gizmo, wallPlaneHit, applyDrag } from './gizmo.js';
 import { shoot, contactSheet, renderToCanvas } from './capture.js';
+import { letterbox, matchExportToPhoto } from './frame.js';
 import { defaultHome, defaultScene, defaultExport, nextId, OPENING_PRESETS, migrate } from './defaults.js';
 
 const STORE_KEY = 'sitemassing3d.v1';
@@ -45,15 +46,25 @@ function rebuild() {
   stage.homeGroup.position.set(sp.posX || 0, baseY, sp.posZ || 0);
   stage.homeGroup.rotation.y = THREE.MathUtils.degToRad(sp.rotY || 0);
 
-  if (sp.camDist && isFinite(sp.camDist) && sp.camDist > 0) {
-    stage.setCameraDistance(sp.camDist);
-  }
+  // Camera distance is deliberately NOT re-applied here. rebuild() runs on every
+  // keystroke and on every frame of a drag, and the orbit handler writes the
+  // live distance back into sp.camDist — re-applying it closed that loop and
+  // pinned `userMoved`, which quietly killed preset re-framing on resize.
 
-  stage.applySceneOpts(state.scene, state.home.dimensions);
+  applyScene();
   gizmo.show(state.home.openings.find((o) => o.id === selectedId), state.home.dimensions);
   updateHud();
-  updateSitePhotoPlate();
   save();
+}
+
+/**
+ * Scene options own the background colour, the site photo owns it when one is
+ * showing. Applying them in the wrong order painted over the photo, so every
+ * caller goes through here instead of touching `applySceneOpts` directly.
+ */
+function applyScene() {
+  stage.applySceneOpts(state.scene, state.home.dimensions);
+  updateSitePhotoPlate();
 }
 
 function updateSitePhotoPlate() {
@@ -62,6 +73,7 @@ function updateSitePhotoPlate() {
   const sp = state.home.sitePhoto;
   if (!sp || !sp.src || !sp.show || state.scene.blockLandscape) {
     bg.style.display = 'none';
+    bg.style.backgroundImage = '';
     if (state.scene) stage.scene.background = state.scene.bgVisible === false ? null : new THREE.Color(state.scene.bg);
     return;
   }
@@ -136,10 +148,12 @@ function updateHud() {
   const d = state.home.dimensions;
   const dv = derived(d);
   const ratio = (d.lengthFt / d.widthFt).toFixed(2);
+  const camY = Math.round(stage.camera.position.y * 10) / 10;
   $('hud').textContent =
     `${state.home.name}\n` +
     `${fmtFt(d.widthFt)} W × ${fmtFt(d.lengthFt)} L   (front wall reads ${ratio}× the gable end)\n` +
-    `eave ${fmtFt(dv.eaveY)}   ridge ${fmtFt(dv.ridgeY)}   pitch ${d.roofPitch}/12   floor ${fmtFt(d.floorHeightFt)}`;
+    `eave ${fmtFt(dv.eaveY)}   ridge ${fmtFt(dv.ridgeY)}   pitch ${d.roofPitch}/12   floor ${fmtFt(d.floorHeightFt)}\n` +
+    `camera ${camY}' up   ${Math.round(stage.getCameraDistance())}' out   ${state.scene.focal}mm`;
   $('ratioHint').textContent =
     `Front wall must read ${ratio}× as long as the gable end is wide. Roof ridge ${fmtFt(dv.ridgeY)} above grade.`;
 }
@@ -168,7 +182,7 @@ const photoFields = [
 ];
 const sceneNums = [['s_focal', 'focal'], ['s_eye', 'eye'], ['s_landingDepth', 'landingDepthFt']];
 const sceneRanges = [['s_sunAz', 'sunAz'], ['s_sunEl', 'sunEl'], ['s_flat', 'flat']];
-const sceneChecks = [['s_grid', 'grid'], ['s_shadow', 'shadow'], ['s_steps', 'steps'], ['s_stepLanding', 'stepLanding'], ['s_wireframe', 'wireframe'], ['s_blockLandscape', 'blockLandscape'], ['s_labels', 'labels'], ['s_dims', 'dims']];
+const sceneChecks = [['s_grid', 'grid'], ['s_shadow', 'shadow'], ['s_steps', 'steps'], ['s_stepLanding', 'stepLanding'], ['s_wireframe', 'wireframe'], ['s_blockLandscape', 'blockLandscape'], ['s_labels', 'labels'], ['s_dims', 'dims'], ['s_horizon', 'horizon']];
 
 function syncForm() {
   $('f_name').value = state.home.name;
@@ -212,6 +226,7 @@ function syncForm() {
   $('x_h').value = state.export.h;
   $('x_alpha').checked = state.export.alpha;
   $('x_burn').checked = state.export.burn;
+  if ($('x_lockFrame')) $('x_lockFrame').checked = state.export.lockFrame !== false;
 }
 
 /** Swap in a home spec from disk or the library and reframe on it. */
@@ -239,10 +254,7 @@ function bind() {
     if ($('btnToggleSidebar')) $('btnToggleSidebar').textContent = text;
     if ($('btnToggleSidebarTop')) $('btnToggleSidebarTop').textContent = collapsed ? '▶ Sidebar' : '◀ Sidebar';
     
-    setTimeout(() => {
-      const c = $('view');
-      if (c) stage.resize(c.clientWidth, c.clientHeight);
-    }, 210);
+    setTimeout(fit, 210); // after the sidebar width transition settles
   };
 
   if ($('btnToggleSidebar')) $('btnToggleSidebar').addEventListener('click', toggleSidebar);
@@ -369,18 +381,31 @@ function bind() {
       save();
     }
   }, { passive: false });
+  // Photo pan/zoom/opacity move a CSS background — they touch no geometry, so
+  // they must not drag a full rebuild of every wall through each slider tick.
+  const PHOTO_ONLY = new Set(['opacity', 'scale', 'panX', 'panY', 'rotation']);
   for (const [id, key] of photoFields) {
-    if ($(id)) {
-      $(id).addEventListener('input', (e) => {
-        state.home.sitePhoto[key] = parseFloat(e.target.value) || 0;
-        rebuild();
-      });
-    }
+    if (!$(id)) continue;
+    $(id).addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      state.home.sitePhoto[key] = Number.isNaN(v) ? 0 : v;
+      if (key === 'camDist') stage.setCameraDistance(state.home.sitePhoto.camDist);
+      if (PHOTO_ONLY.has(key)) { updateSitePhotoPlate(); save(); }
+      else rebuild();
+    });
+  }
+  if ($('sp_fitMode')) {
+    $('sp_fitMode').addEventListener('change', (e) => {
+      state.home.sitePhoto.fitMode = e.target.value;
+      updateSitePhotoPlate();
+      save();
+    });
   }
   if ($('sp_show')) {
     $('sp_show').addEventListener('change', (e) => {
       state.home.sitePhoto.show = e.target.checked;
-      rebuild();
+      updateSitePhotoPlate();
+      save();
     });
   }
   if ($('fileSitePhoto')) {
@@ -389,14 +414,25 @@ function bind() {
       if (!f) return;
       const r = new FileReader();
       r.onload = () => {
-        state.home.sitePhoto.src = r.result;
-        state.home.sitePhoto.show = true;
+        const sp = state.home.sitePhoto;
+        sp.src = r.result;
+        sp.show = true;
         if ($('sp_show')) $('sp_show').checked = true;
+
+        // Read the photo's true pixel size, then shape the export around it.
+        const probe = new Image();
+        probe.onload = () => {
+          sp.natW = probe.naturalWidth;
+          sp.natH = probe.naturalHeight;
+          matchExportToSitePhoto();
+        };
+        probe.src = sp.src;
         rebuild();
       };
       r.readAsDataURL(f);
     });
   }
+  if ($('btnMatchExport')) $('btnMatchExport').addEventListener('click', () => matchExportToSitePhoto(true));
   if ($('btnResetPhoto')) {
     $('btnResetPhoto').addEventListener('click', () => {
       state.home.sitePhoto = {
@@ -404,27 +440,21 @@ function bind() {
         fitMode: 'contain', scale: 1.0, panX: 0, panY: 0, rotation: 0, baselineY: 0, camDist: 60, posX: 0, posZ: 0, rotY: 0, show: true
       };
       syncForm();
+      stage.setCameraDistance(state.home.sitePhoto.camDist);
       rebuild();
     });
   }
 
   function syncCameraStateToForm() {
-    const cam = stage.camera;
-
-    // 1. Camera Distance
     const dist = Math.round(stage.getCameraDistance() * 10) / 10;
     state.home.sitePhoto.camDist = dist;
     if ($('sp_camDist') && document.activeElement !== $('sp_camDist')) {
       $('sp_camDist').value = dist;
     }
 
-    // 2. Eye height
-    const eyeY = Math.round(cam.position.y * 10) / 10;
-    state.scene.eye = eyeY;
-    if ($('s_eye') && document.activeElement !== $('s_eye')) {
-      $('s_eye').value = eyeY;
-    }
-
+    // Camera height is reported in the HUD, not written back into scene.eye.
+    // scene.eye is the *Eye level preset's* standing height; orbiting a ¾ view
+    // used to overwrite it, so the preset then put the viewer 40' in the air.
     updateHud();
     save();
   }
@@ -437,8 +467,12 @@ function bind() {
       $(id).addEventListener('input', (e) => {
         state.scene[key] = parseFloat(e.target.value);
         if (key === 'landingDepthFt') rebuild();
-        else stage.applySceneOpts(state.scene, state.home.dimensions);
-        if ((key === 'focal' || key === 'eye') && stage._lastView) {
+        else applyScene();
+        // Re-frame on a lens change only while the framing is still the preset's.
+        // Once you have placed the camera against a site photo, dialling in the
+        // photo's focal length must change the field of view and nothing else —
+        // re-fitting would throw the alignment away at the worst moment.
+        if ((key === 'focal' || key === 'eye') && stage._lastView && !stage.userMoved) {
           stage.setView(stage._lastView, state.home.dimensions, state.scene);
         }
         save();
@@ -450,7 +484,7 @@ function bind() {
       $(id).addEventListener('change', (e) => {
         state.scene[key] = e.target.checked;
         if (['steps', 'stepLanding', 'labels', 'dims'].includes(key)) rebuild();
-        else { stage.applySceneOpts(state.scene, state.home.dimensions); save(); }
+        else { applyScene(); save(); }
       });
     }
   }
@@ -486,15 +520,26 @@ function bind() {
   }
   $('s_bg').addEventListener('input', (e) => {
     state.scene.bg = e.target.value;
-    stage.applySceneOpts(state.scene, state.home.dimensions);
+    applyScene();
     save();
   });
 
   for (const [id, key] of [['x_w', 'w'], ['x_h', 'h']]) {
-    $(id).addEventListener('change', (e) => { state.export[key] = parseInt(e.target.value, 10) || 1200; save(); });
+    $(id).addEventListener('change', (e) => {
+      state.export[key] = parseInt(e.target.value, 10) || 1200;
+      fit(); // the locked frame is derived from these
+      save();
+    });
   }
   $('x_alpha').addEventListener('change', (e) => { state.export.alpha = e.target.checked; save(); });
   $('x_burn').addEventListener('change', (e) => { state.export.burn = e.target.checked; save(); });
+  if ($('x_lockFrame')) {
+    $('x_lockFrame').addEventListener('change', (e) => {
+      state.export.lockFrame = e.target.checked;
+      fit();
+      save();
+    });
+  }
 
   $('btnAddDoor').addEventListener('click', () => armAdd('door'));
   $('btnAddSlider').addEventListener('click', () => armAdd('slider'));
@@ -516,7 +561,8 @@ function bind() {
     });
   }
 
-  for (const b of document.querySelectorAll('#viewPresets button')) {
+  // Both the top bar and the in-viewport bar carry preset buttons.
+  for (const b of document.querySelectorAll('button[data-view]')) {
     b.addEventListener('click', () => {
       stage.setView(b.dataset.view, state.home.dimensions, state.scene);
       currentViewName = b.textContent.trim();
@@ -596,6 +642,7 @@ function bind() {
     }
     state.export.h = Math.max(240, Math.round((state.export.w * ratio) / 16) * 16);
     $('x_h').value = state.export.h;
+    fit(); // the locked frame follows the new aspect
     save();
   });
 
@@ -618,6 +665,30 @@ function bind() {
 }
 
 let currentViewName = '¾ front-L';
+
+/**
+ * Retarget the export to the site photo's own pixel grid. With the frame locked
+ * this is what makes a transparent export drop straight onto the original photo
+ * in Photoshop / Affinity / Illustrator at 1:1 — no scaling, no re-cropping,
+ * so the massing stays dimensionally honest all the way to the client plate.
+ */
+function matchExportToSitePhoto(announce = false) {
+  const sp = state.home.sitePhoto || {};
+  const size = matchExportToPhoto(sp.natW, sp.natH);
+  if (!size) {
+    if (announce) alert('Load a site photo first — the export is matched to its pixel size.');
+    return false;
+  }
+  state.export.w = size.w;
+  state.export.h = size.h;
+  state.export.lockFrame = true;
+  $('x_w').value = size.w;
+  $('x_h').value = size.h;
+  if ($('x_lockFrame')) $('x_lockFrame').checked = true;
+  fit();
+  save();
+  return true;
+}
 
 function armAdd(type) {
   pendingAdd = type;
@@ -702,10 +773,15 @@ function onPick(ev) {
 
   const planPick = $('p_pick').checked;
 
+  // Wall frames are in the home's own coordinates. Once the home is nudged or
+  // rotated onto the lot (House X/Z/Heading), a world-space pick no longer
+  // matches them, so every pick is brought back into the group's local space.
+  const toHomeLocal = (p) => stage.homeGroup.worldToLocal(p.clone());
+
   if (planPick) {
     const hits = ray.intersectObjects(stage.planGroup.children, true);
     if (hits.length) {
-      const hit = nearestWallHit(hits[0].point, state.home.dimensions);
+      const hit = nearestWallHit(toHomeLocal(hits[0].point), state.home.dimensions);
       addOpening(pendingAdd || 'door', hit.wall, hit.offsetFt, null);
       return;
     }
@@ -718,7 +794,7 @@ function onPick(ev) {
     if (!wallHit) return;
     const wall = wallHit.object.userData.wall;
     const f = wallFrames(state.home.dimensions)[wall];
-    const rel = wallHit.point.clone().sub(f.origin);
+    const rel = toHomeLocal(wallHit.point).sub(f.origin);
     addOpening(pendingAdd, wall, rel.dot(f.right), rel.y);
     return;
   }
@@ -783,8 +859,11 @@ function onMove(ev) {
     const sp = state.home.sitePhoto;
 
     if (photoDrag.button === 0 && !ev.altKey) {
-      const percentX = (dx / r.width) * 100 * (sp.scale || 1);
-      const percentY = (dy / r.height) * 100 * (sp.scale || 1);
+      // CSS applies `translate()` in the element's own, unscaled pixels, so the
+      // pan percentage is independent of the photo zoom. Multiplying by scale
+      // here made the photo outrun the cursor whenever you were zoomed in.
+      const percentX = (dx / r.width) * 100;
+      const percentY = (dy / r.height) * 100;
       sp.panX = Math.round((photoDrag.startPanX + percentX) * 10) / 10;
       sp.panY = Math.round((photoDrag.startPanY + percentY) * 10) / 10;
       if ($('sp_panX')) $('sp_panX').value = sp.panX;
@@ -938,9 +1017,59 @@ function load() {
 // Boot
 // ---------------------------------------------------------------------------
 
+/**
+ * Size the canvas — and the photo plate behind it — to the frame that will
+ * actually be exported.
+ *
+ * With `lockFrame` on, the live frame is letterboxed to the export's aspect
+ * ratio. That is the whole point: the photo is a CSS background fitted to this
+ * box, and the export refits it to the export's box, so if the two aspects
+ * differ the photo lands somewhere else in the PNG and the perspective camera's
+ * horizontal field changes too. Every minute you spent aligning the massing to
+ * the lot is lost at the moment you hit Render. Locked, the preview *is* the
+ * plate.
+ */
 function fit() {
   const r = canvas.parentElement.getBoundingClientRect();
-  stage.resize(Math.max(1, Math.floor(r.width)), Math.max(1, Math.floor(r.height)));
+  const boxW = Math.max(1, Math.floor(r.width));
+  const boxH = Math.max(1, Math.floor(r.height));
+  const bg = $('sitePhotoBg');
+
+  let box = { x: 0, y: 0, w: boxW, h: boxH };
+  const locked = !!state.export.lockFrame && state.export.w > 0 && state.export.h > 0;
+  if (locked) box = letterbox(boxW, boxH, state.export.w / state.export.h);
+
+  const px = (v) => `${v}px`;
+  for (const el of [canvas, bg]) {
+    if (!el) continue;
+    if (locked) {
+      el.style.left = px(box.x);
+      el.style.top = px(box.y);
+      el.style.width = px(box.w);
+      el.style.height = px(box.h);
+    } else {
+      el.style.left = '';
+      el.style.top = '';
+      el.style.width = '';
+      el.style.height = '';
+    }
+  }
+  $('stage')?.classList.toggle('frame-locked', locked);
+  updateFrameHint(locked, box);
+
+  stage.resize(box.w, box.h);
+}
+
+/** Tell the user, in the viewport, what the exported plate will be. */
+function updateFrameHint(locked, box) {
+  const el = $('frameHint');
+  if (!el) return;
+  if (!locked) {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'block';
+  el.textContent = `frame ${state.export.w}×${state.export.h}px  ·  preview ${box.w}×${box.h}`;
 }
 
 syncForm();
@@ -950,12 +1079,40 @@ refreshList();
 fit();
 updatePlanPlate(stage, state.home.plan);
 stage.setView('hero-left', state.home.dimensions, state.scene);
+// A session with a site photo has a hand-tuned standoff; the preset would
+// otherwise throw it away on every reload.
+if (state.home.sitePhoto?.src) stage.setCameraDistance(state.home.sitePhoto.camDist);
 addEventListener('resize', fit);
 
 // Debug handle: lets you poke at state/stage from the console without a build step.
 window.__app = { state, stage, rebuild, refreshList, renderToCanvas };
 
+/**
+ * Draw the horizon guide across the live frame. Matching this line to the
+ * horizon in the site photo is what makes the overlay sit on the lot rather
+ * than float above it — it is the only direct feedback that the massing's
+ * camera height and tilt agree with the camera that took the photo.
+ */
+let lastHorizonTop = null;
+function updateHorizonGuide() {
+  const el = $('horizonGuide');
+  if (!el) return;
+  const t = state.scene.horizon ? stage.horizonFraction() : null;
+  if (t === null) {
+    if (lastHorizonTop !== null) { el.style.display = 'none'; lastHorizonTop = null; }
+    return;
+  }
+  const top = Math.round(canvas.offsetTop + t * canvas.offsetHeight);
+  if (top === lastHorizonTop) return;
+  lastHorizonTop = top;
+  el.style.display = 'block';
+  el.style.left = `${canvas.offsetLeft}px`;
+  el.style.width = `${canvas.offsetWidth}px`;
+  el.style.top = `${top}px`;
+}
+
 (function loop() {
   requestAnimationFrame(loop);
   stage.render();
+  updateHorizonGuide();
 })();

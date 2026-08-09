@@ -103,9 +103,15 @@ main.sidebar-collapsed #sidebar {
 }
 
 #stage { flex: 1 1 auto; position: relative; min-width: 0; overflow: hidden; }
-.site-photo-bg {
+
+/* The photo plate and the canvas are the same box, always. JS sizes both from
+   the export aspect when the frame is locked; unset, they fill the stage. */
+.site-photo-bg, #view {
   position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+}
+.site-photo-bg {
   background-position: center;
   background-repeat: no-repeat;
   background-size: contain;
@@ -114,7 +120,44 @@ main.sidebar-collapsed #sidebar {
   transform-origin: center center;
   transition: opacity 0.1s ease;
 }
-#view { width: 100%; height: 100%; display: block; position: relative; z-index: 1; }
+#view { display: block; z-index: 1; }
+
+/* Letterbox: everything outside the export frame is dead space, so say so. */
+#stage.frame-locked { background: #0b0c0f; }
+#stage.frame-locked #view { box-shadow: 0 0 0 1px rgba(111, 178, 255, 0.35); }
+
+.frame-hint {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  font: 10.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #9aa2ad;
+  background: rgba(0, 0, 0, .45);
+  padding: 4px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.horizon-guide {
+  position: absolute;
+  height: 0;
+  border-top: 1px dashed rgba(255, 212, 121, 0.85);
+  pointer-events: none;
+  z-index: 4;
+}
+.horizon-guide span {
+  position: absolute;
+  right: 4px;
+  top: 3px;
+  font: 9.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #ffd479;
+  background: rgba(0, 0, 0, .5);
+  padding: 2px 5px;
+  border-radius: 3px;
+}
 
 .photo-drag-badge {
   position: absolute;

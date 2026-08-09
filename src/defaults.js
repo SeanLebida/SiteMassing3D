@@ -60,7 +60,10 @@ export function defaultHome() {
       { id: nextId('w'), type: 'window', wall: 'right', offsetFt: 9,  widthFt: 3, heightFt: 3.5, sillFt: 3.5, label: 'Bedroom 3' },
     ],
     plan: { src: null, widthFt: 56, offsetX: 0, offsetZ: 0, rotation: 0, opacity: 0.65, show: true },
-    sitePhoto: { src: null, show: true, fitMode: 'contain', opacity: 0.85, scale: 1.0, panX: 0, panY: 0, rotation: 0, baselineY: 0, camDist: 60, posX: 0, posZ: 0, rotY: 0 },
+    // natW/natH are the photo's own pixel size, read on load. They are what the
+    // export is matched to, so a transparent plate lands on the untouched photo
+    // pixel-for-pixel in Photoshop / Affinity.
+    sitePhoto: { src: null, show: true, fitMode: 'contain', opacity: 0.85, scale: 1.0, panX: 0, panY: 0, rotation: 0, baselineY: 0, camDist: 60, posX: 0, posZ: 0, rotY: 0, natW: 0, natH: 0 },
   };
 }
 
@@ -84,11 +87,15 @@ export function defaultScene() {
     blockLandscape: false,
     labels: false,
     dims: false,
+    horizon: false,   // draw the ground-plane horizon guide for camera matching
   };
 }
 
 export function defaultExport() {
-  return { w: 2400, h: 1600, alpha: false, burn: true };
+  // lockFrame letterboxes the viewport to the export's aspect ratio, so what you
+  // align on screen is what the PNG contains. Off, the photo re-fits and the
+  // camera's horizontal field changes at export time, and the overlay drifts.
+  return { w: 2400, h: 1600, alpha: false, burn: true, lockFrame: true };
 }
 
 export function migrate(home) {

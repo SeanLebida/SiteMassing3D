@@ -90,6 +90,37 @@ export class Stage {
     this.scene.add(this.homeGroup);
   }
 
+  /**
+   * Where the ground-plane horizon lands in the frame, as a fraction from the
+   * top edge. This is the one measurement that tells you whether the massing's
+   * camera actually matches the site photo's camera: line this up with the
+   * horizon in the photo and the ground planes agree, so the home sits on the
+   * lot instead of floating over it.
+   *
+   * Null for the orthographic elevations, which have no vanishing point, and
+   * when the horizon falls well outside the frame.
+   */
+  horizonFraction() {
+    if (this.camera !== this.persp) return null;
+    const cam = this.persp;
+    cam.updateMatrixWorld(true);
+
+    const fwd = new THREE.Vector3();
+    cam.getWorldDirection(fwd);
+    fwd.y = 0;
+    if (fwd.lengthSq() < 1e-9) return null; // straight down: no horizon in frame
+    fwd.normalize();
+
+    // A point at the camera's own height, effectively at infinity, projects to
+    // the vanishing point of every horizontal direction — i.e. the horizon.
+    const far = cam.position.clone().addScaledVector(fwd, 1e6);
+    const ndcY = far.project(cam).y;
+    if (!isFinite(ndcY)) return null;
+
+    const t = (1 - ndcY) / 2;
+    return t < -0.5 || t > 1.5 ? null : t;
+  }
+
   applySceneOpts(o, dim) {
     const az = THREE.MathUtils.degToRad(o.sunAz);
     const el = THREE.MathUtils.degToRad(o.sunEl);

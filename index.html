@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SiteMassing3D — double-wide massing &amp; elevation renderer</title>
 <!-- ?v= bust: plain static servers hand Chrome a cached stylesheet after edits -->
-<link rel="stylesheet" href="css/app.css?v=2">
+<link rel="stylesheet" href="css/app.css?v=3">
 <script type="importmap">
 {
   "imports": {
@@ -235,12 +235,14 @@
             </select>
           </label>
           <label><span>Photo opacity</span><input id="sp_op" type="range" autocomplete="off" min="0.1" max="1" step="0.05"></label>
-          <label><span>Photo zoom</span><input id="sp_scale" type="range" autocomplete="off" min="0.5" max="3" step="0.05"></label>
+          <label><span>Photo zoom</span><input id="sp_scale" type="range" autocomplete="off" min="0.2" max="5" step="0.05"></label>
           <label><span>Pan X (%)</span><input id="sp_panX" type="number" autocomplete="off" step="1" min="-100" max="100"></label>
           <label><span>Pan Y / Baseline (%)</span><input id="sp_panY" type="number" autocomplete="off" step="1" min="-100" max="100"></label>
           <label><span>Photo angle (&deg;)</span><input id="sp_rot" type="number" autocomplete="off" step="1" min="-180" max="180"></label>
         </div>
         <label class="row check"><input id="sp_show" type="checkbox" autocomplete="off"><span>Show site photo background</span></label>
+        <button id="btnMatchExport" class="block">Match export to this photo (1:1)</button>
+        <p class="hint">Sets the PNG size to the photo's own pixels and locks the preview frame to it, so a transparent export drops onto the untouched photo at 1:1 in Photoshop / Affinity / Illustrator.</p>
         <label class="row check" style="margin-top:8px;background:rgba(111,178,255,0.12);padding:5px 8px;border-radius:4px;border:1px solid rgba(111,178,255,0.3);"><input id="sp_dragMode" type="checkbox" autocomplete="off"><span style="color:#6fb2ff;font-weight:600;">🖱️ Mouse Photo Drag: Pan &amp; Zoom photo with mouse</span></label>
 
         <h3 style="margin:10px 0 6px;font-size:10px;color:#858d98;text-transform:uppercase;">Ground Horizon &amp; Camera Distance</h3>
@@ -301,6 +303,7 @@
         <label class="row check"><input id="s_wireframe" type="checkbox" autocomplete="off"><span style="color:#6fb2ff;font-weight:600;">📐 Wireframe view mode</span></label>
         <label class="row check"><input id="s_labels" type="checkbox" autocomplete="off"><span>Door callout markers</span></label>
         <label class="row check"><input id="s_dims" type="checkbox" autocomplete="off"><span>Dimension outline on ground</span></label>
+        <label class="row check"><input id="s_horizon" type="checkbox" autocomplete="off"><span>📏 Horizon guide (match to the photo's horizon)</span></label>
         <label class="row check" style="margin-top:8px;background:rgba(255,100,100,0.12);padding:5px 8px;border-radius:4px;border:1px solid rgba(255,133,133,0.3);"><input id="s_blockLandscape" type="checkbox" autocomplete="off"><span style="color:#ff8585;font-weight:600;">🚫 Block landscape &amp; ground view</span></label>
 
         <h3 style="margin:12px 0 6px;font-size:10px;color:#858d98;text-transform:uppercase;">PNG Screenshot &amp; Contact Sheet</h3>
@@ -308,8 +311,10 @@
           <label><span>Width (px)</span><input id="x_w" type="number" autocomplete="off" step="16"></label>
           <label><span>Height (px)</span><input id="x_h" type="number" autocomplete="off" step="16"></label>
         </div>
+        <label class="row check"><input id="x_lockFrame" type="checkbox" autocomplete="off"><span style="color:#6fb2ff;font-weight:600;">🔒 Lock preview frame to export aspect</span></label>
         <label class="row check"><input id="x_alpha" type="checkbox" autocomplete="off"><span>Transparent background (for compositing)</span></label>
         <label class="row check"><input id="x_burn" type="checkbox" autocomplete="off"><span>Burn in model name + W×L caption</span></label>
+        <p class="hint">With the frame locked, the letterboxed area on screen is exactly what the PNG contains. Unlock it and the photo re-fits and the camera's horizontal field widens at export time, so a careful alignment drifts.</p>
         <button id="btnFitPx" class="block">Fit pixel aspect to current view</button>
         <button id="btnShot2" class="primary block">Render PNG</button>
         <button id="btnSheet" class="block">Render 4-view contact sheet</button>
@@ -325,7 +330,7 @@
         <button id="btnRotR90" class="btn-rot" title="Rotate camera 90° Right">↻ 90°</button>
         <button id="btnWireframe" class="btn-rot" title="Toggle wireframe mode">📐 Wireframe</button>
       </div>
-      <div id="viewPresets" class="btn-group view-presets-bar">
+      <div id="viewPresetsBar" class="btn-group view-presets-bar">
         <button data-view="hero-left">¾ L</button>
         <button data-view="hero-right">¾ R</button>
         <button data-view="front">Front</button>
@@ -338,6 +343,8 @@
     <div id="photoDragBadge" class="photo-drag-badge" style="display:none;">🖱️ Photo Mouse Drag Active (Drag: Pan, Scroll: Zoom, Alt+Drag: Rotate)</div>
     <div id="sitePhotoBg" class="site-photo-bg"></div>
     <canvas id="view"></canvas>
+    <div id="horizonGuide" class="horizon-guide" style="display:none;"><span>horizon</span></div>
+    <div id="frameHint" class="frame-hint" style="display:none;"></div>
     <div id="hud"></div>
   </div>
 </main>

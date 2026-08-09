@@ -2,6 +2,7 @@
 
 import * as THREE from 'three';
 import { fmtFt } from './build.js';
+import { photoDrawRect } from './frame.js';
 
 function slug(s) {
   return (s || 'home').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'home';
@@ -38,6 +39,11 @@ export function renderToCanvas(stage, w, h, alpha, sceneOpts, home) {
   stage.renderer.getSize(prevSize);
   const prevRatio = stage.renderer.getPixelRatio();
   const prevBg = stage.scene.background;
+  // The renderer is created with `alpha: true`, so it rests at clear alpha 0 and
+  // the site photo shows through the canvas. Restoring a hardcoded 1 here turned
+  // the live viewport opaque black the moment you exported once, and the photo
+  // you were aligning against disappeared.
+  const prevClearAlpha = stage.renderer.getClearAlpha();
 
   // Save active camera transform, target, and orientation
   const isOrtho = stage.camera === stage.ortho;
@@ -94,17 +100,12 @@ export function renderToCanvas(stage, w, h, alpha, sceneOpts, home) {
       ctx.rotate(rot);
       ctx.scale(scale, scale);
 
-      const fitMode = sp.fitMode || 'contain';
-      const imgAspect = (img.naturalWidth || img.width) / (img.naturalHeight || img.height || 1);
-      const canvasAspect = w / h;
-      let drawW = w, drawH = h;
-      if (fitMode === 'cover') {
-        if (imgAspect > canvasAspect) { drawW = h * imgAspect; }
-        else { drawH = w / imgAspect; }
-      } else if (fitMode === 'contain') {
-        if (imgAspect > canvasAspect) { drawH = w / imgAspect; }
-        else { drawW = h * imgAspect; }
-      }
+      const { w: drawW, h: drawH } = photoDrawRect(
+        sp.fitMode || 'contain',
+        img.naturalWidth || img.width,
+        img.naturalHeight || img.height,
+        w, h,
+      );
 
       ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
       ctx.restore();
@@ -115,8 +116,8 @@ export function renderToCanvas(stage, w, h, alpha, sceneOpts, home) {
 
   // Restore live viewport size, aspect ratio, camera position, and target
   stage.scene.background = prevBg;
-  stage.renderer.setClearAlpha(1);
-  stage.grid.visible = sceneOpts.grid;
+  stage.renderer.setClearAlpha(prevClearAlpha);
+  stage.grid.visible = !!sceneOpts.grid && !sceneOpts.blockLandscape;
   stage.renderer.setPixelRatio(prevRatio);
   stage.renderer.setSize(prevSize.x, prevSize.y, false);
 

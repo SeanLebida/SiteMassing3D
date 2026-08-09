@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { defaultHome, defaultScene, defaultExport, migrate, WALLS } from '../src/defaults.js';
 import { derived, wallFrames, fmtAllUnits, buildHome, getWallHeight } from '../src/build.js';
+import { letterbox, photoDrawRect, matchExportToPhoto } from '../src/frame.js';
 
 test('1. Defaults & State Initialization', () => {
   const home = defaultHome();
@@ -301,4 +302,103 @@ test('15. Connected Dormer Cap (Double-Wide Merged Shed Profile)', () => {
     if (child.name === 'innerFalseEave') innerEaves.push(child);
   });
   assert.equal(innerEaves.length, 2, 'Two inner false eave returns (one per side)');
+});
+
+// ---------------------------------------------------------------------------
+// Site-photo overlay: the preview frame and the exported PNG must agree.
+// ---------------------------------------------------------------------------
+
+test('16. Letterbox centres the export aspect inside the stage', () => {
+  // Wide stage, 3:2 export — bars top and bottom.
+  const a = letterbox(1600, 1000, 3 / 2);
+  assert.equal(a.w, 1500);
+  assert.equal(a.h, 1000);
+  assert.equal(a.y, 0);
+  assert.equal(a.x, 50, 'Frame is horizontally centred');
+
+  // Tall export in a wide stage — bars left and right.
+  const b = letterbox(1600, 1000, 2 / 3);
+  assert.equal(b.h, 1000);
+  assert.equal(b.w, 667);
+  assert.ok(Math.abs(b.w / b.h - 2 / 3) < 0.002, 'Aspect preserved');
+
+  // Matching aspect fills the stage exactly, no bars.
+  const c = letterbox(1600, 1000, 1.6);
+  assert.deepEqual(c, { x: 0, y: 0, w: 1600, h: 1000 });
+
+  // Never exceeds the stage box, and never collapses to zero.
+  for (const aspect of [0.1, 1, 10, 0, NaN, -3]) {
+    const r = letterbox(800, 600, aspect);
+    assert.ok(r.w >= 1 && r.h >= 1, `positive size for aspect ${aspect}`);
+    assert.ok(r.w <= 800 && r.h <= 600, `fits the stage for aspect ${aspect}`);
+  }
+});
+
+test('17. Photo fit rules match CSS background-size', () => {
+  // 2:1 photo in a 1:1 frame.
+  const contain = photoDrawRect('contain', 2000, 1000, 800, 800);
+  assert.equal(contain.w, 800, 'contain: width is the constraint');
+  assert.equal(contain.h, 400, 'contain: whole photo visible, letterboxed');
+
+  const cover = photoDrawRect('cover', 2000, 1000, 800, 800);
+  assert.equal(cover.h, 800, 'cover: height fills the frame');
+  assert.equal(cover.w, 1600, 'cover: photo overflows sideways');
+
+  const stretch = photoDrawRect('100% 100%', 2000, 1000, 800, 800);
+  assert.deepEqual(stretch, { w: 800, h: 800 }, 'stretch: fills, aspect ignored');
+
+  // Tall photo takes the opposite branch.
+  const tall = photoDrawRect('contain', 1000, 2000, 800, 800);
+  assert.equal(tall.h, 800);
+  assert.equal(tall.w, 400);
+});
+
+test('18. A frame matched to the photo shows the photo undistorted', () => {
+  // The workflow guarantee: match the export to the photo, and the photo fills
+  // the frame edge to edge under every fit mode — so a transparent export lands
+  // on the original photo 1:1.
+  const natW = 4032, natH = 3024;
+  const size = matchExportToPhoto(natW, natH);
+  assert.deepEqual(size, { w: 4032, h: 3024 }, 'Under the cap, pixels are exact');
+
+  for (const mode of ['contain', 'cover', '100% 100%']) {
+    const r = photoDrawRect(mode, natW, natH, size.w, size.h);
+    assert.ok(Math.abs(r.w - size.w) < 0.001 && Math.abs(r.h - size.h) < 0.001,
+      `${mode}: photo fills the matched frame exactly`);
+  }
+
+  // And the preview frame carries the same aspect the export will use.
+  const box = letterbox(1200, 900, size.w / size.h);
+  assert.ok(Math.abs(box.w / box.h - size.w / size.h) < 0.002,
+    'Locked preview frame carries the export aspect');
+});
+
+test('19. Oversized photos scale down proportionally, not by rounding', () => {
+  const big = matchExportToPhoto(12000, 8000, 6000);
+  assert.equal(big.w, 6000, 'Longest edge capped');
+  assert.equal(big.h, 4000);
+  assert.ok(Math.abs(big.w / big.h - 12000 / 8000) < 1e-9, 'Aspect exactly preserved');
+
+  const portrait = matchExportToPhoto(3000, 9000, 6000);
+  assert.equal(portrait.h, 6000, 'Cap applies to the longest edge, not width');
+  assert.equal(portrait.w, 2000);
+
+  assert.equal(matchExportToPhoto(0, 0), null, 'No photo loaded -> no match');
+  assert.equal(matchExportToPhoto(undefined, undefined), null);
+});
+
+test('20. Export defaults keep the frame locked and photo size recorded', () => {
+  const exp = defaultExport();
+  assert.equal(exp.lockFrame, true, 'Frame lock is on by default');
+
+  const sp = defaultHome().sitePhoto;
+  assert.equal(sp.natW, 0);
+  assert.equal(sp.natH, 0);
+
+  // migrate() must carry the new site-photo fields onto older saved homes.
+  const old = migrate({ sitePhoto: { src: 'data:,x', panX: 12 } });
+  assert.equal(old.sitePhoto.panX, 12, 'Existing alignment survives');
+  assert.equal(old.sitePhoto.natW, 0, 'New fields defaulted in');
+  assert.equal(old.sitePhoto.fitMode, 'contain');
+  assert.equal(defaultScene().horizon, false, 'Horizon guide defaults off');
 });
