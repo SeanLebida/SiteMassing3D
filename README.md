@@ -1,12 +1,14 @@
 # SiteMassing3D
 
-A parametric 3D massing model of a double-wide, built to produce the plate images
-that the site-render prompt in `../SITE-RENDER-PROMPT-TEMPLATE.md` asks for.
+Parametric Three.js massing for manufactured homes. True-scale elevations, a door/window schedule you can trust, and PNG plates for site renders.
 
-The point is not a pretty render. The point is **geometry you can trust**: the
-front wall really is `L/W` times as long as the gable end, the roof ridge really
-sits at the pitch you typed, and the exterior doors are really where the floor
-plan puts them — including on the walls no photograph covers.
+**[Live demo](https://seanl686.github.io/SiteMassing3D/)**
+
+![Three-quarter view of a double-wide massing](docs/shot-hero.png)
+
+![Orthographic front elevation](docs/shot-elev.png)
+
+The point is not a pretty render. The point is **geometry you can trust**: the front wall really is `L/W` times as long as the gable end, the roof ridge really sits at the pitch you typed, and the exterior doors are really where the floor plan puts them — including on the walls no photograph covers.
 
 ## Run it
 
