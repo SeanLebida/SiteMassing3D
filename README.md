@@ -2,7 +2,7 @@
 
 Parametric Three.js massing for manufactured homes. True-scale elevations, a door/window schedule you can trust, and PNG plates for site renders.
 
-**[Live demo](https://seanl686.github.io/SiteMassing3D/)**
+**[Live demo](https://seanlebida.github.io/SiteMassing3D/)**
 
 ![Three-quarter view of a double-wide massing](docs/shot-hero.png)
 
