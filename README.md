@@ -1,5 +1,7 @@
 # SiteMassing3D
 
+**[Live demo](https://seanlebida.github.io/SiteMassing3D/)**
+
 **A repeatable way to show what a house package would look like on a lot.**
 
 Someone asks "what would that home look like on my land?" This turns that into a
